@@ -162,6 +162,9 @@ for URL in $URLS; do
                             update_config "$current_url" "$last_modified"
                         fi
                     fi
+                else
+                    # Add to downloaded.txt so we don't check headers again if the link appears twice
+                    printf "%s\n" "$current_url" >> downloaded.txt
                 fi
             fi
             continue
