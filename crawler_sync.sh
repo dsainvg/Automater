@@ -1,12 +1,8 @@
 #!/bin/sh
 
-URL="$1"
-LAYERS="${2:-1}"
-
-if [ -z "$URL" ]; then
-    printf "Usage: %s <url> [layers]\n" "$0"
-    return 1 2>/dev/null || exit 1
-fi
+# Define multiple URLs and their corresponding layers
+URLS="https://example.com/ https://test.com/"
+LAYERS_LIST="1 2"
 
 mkdir -p files
 
@@ -34,11 +30,8 @@ update_config() {
     printf "%s\t%s\n" "$url" "$lm" >> "$CONFIG_FILE"
 }
 
-> queue_0.txt
 > visited.txt
 > downloaded.txt
-
-printf "%s\n" "$URL" > queue_0.txt
 
 get_absolute_url() {
     base="$1"
@@ -97,13 +90,27 @@ is_target_file_strict() {
     esac
 }
 
-current_layer=0
+# We will iterate over URLS and LAYERS_LIST
+idx=1
+for URL in $URLS; do
+    # Get the corresponding layer (or default to 1)
+    LAYERS=$(printf "%s\n" "$LAYERS_LIST" | awk -v i="$idx" '{print $i}')
+    if [ -z "$LAYERS" ]; then
+        LAYERS=1
+    fi
 
-while [ "$current_layer" -le "$LAYERS" ]; do
-    printf "=== Processing Layer %d ===\n" "$current_layer"
+    printf "=== Processing URL %s with %d layers ===\n" "$URL" "$LAYERS"
 
-    next_layer=$((current_layer + 1))
-    > "queue_${next_layer}.txt"
+    > queue_0.txt
+    printf "%s\n" "$URL" > queue_0.txt
+
+    current_layer=0
+
+    while [ "$current_layer" -le "$LAYERS" ]; do
+        printf "=== Processing Layer %d ===\n" "$current_layer"
+
+        next_layer=$((current_layer + 1))
+        > "queue_${next_layer}.txt"
 
     while IFS= read -r current_url || [ -n "$current_url" ]; do
         [ -z "$current_url" ] && continue
@@ -187,12 +194,15 @@ while [ "$current_layer" -le "$LAYERS" ]; do
 
     done < "queue_${current_layer}.txt"
 
-    if [ -f "queue_${next_layer}.txt" ]; then
-        sort -u "queue_${next_layer}.txt" > "queue_${next_layer}_tmp.txt"
-        mv "queue_${next_layer}_tmp.txt" "queue_${next_layer}.txt"
-    fi
+        if [ -f "queue_${next_layer}.txt" ]; then
+            sort -u "queue_${next_layer}.txt" > "queue_${next_layer}_tmp.txt"
+            mv "queue_${next_layer}_tmp.txt" "queue_${next_layer}.txt"
+        fi
 
-    current_layer=$next_layer
+        current_layer=$next_layer
+    done
+
+    idx=$((idx + 1))
 done
 
 printf "Done!\n"
