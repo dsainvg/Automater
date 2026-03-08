@@ -4,12 +4,15 @@ param (
     [int]$Layers = 1
 )
 
+Write-Host "Ensuring 'files' directory exists..."
 if (-not (Test-Path -Path "files")) {
     New-Item -ItemType Directory -Force -Path "files" | Out-Null
 }
 
 $ConfigFile = "files/.sync_config"
+Write-Host "Checking for config file at $ConfigFile..."
 if (-not (Test-Path -Path $ConfigFile)) {
+    Write-Host "Config file not found. Creating $ConfigFile..."
     New-Item -ItemType File -Force -Path $ConfigFile | Out-Null
 }
 
@@ -51,9 +54,12 @@ function Update-Config {
     }
 }
 
-Set-Content -Path "queue_0.txt" -Value $Url
+Write-Host "Initializing tracking files (queue_0.txt, visited.txt, downloaded.txt)..."
 New-Item -ItemType File -Force -Path "visited.txt" | Out-Null
 New-Item -ItemType File -Force -Path "downloaded.txt" | Out-Null
+
+Write-Host "Adding initial URL to queue_0.txt..."
+Set-Content -Path "queue_0.txt" -Value $Url
 
 function Get-AbsoluteUrl {
     param ([string]$Base, [string]$Link)
@@ -139,6 +145,7 @@ while ($currentLayer -le $Layers) {
             foreach ($currentUrl in $urls) {
                 if ([string]::IsNullOrWhiteSpace($currentUrl)) { continue }
 
+                Write-Host "Checking if URL $currentUrl was already visited..."
                 $visited = $false
                 if (Test-Path -Path "visited.txt") {
                     $visitedLines = Get-Content -Path "visited.txt"
@@ -154,9 +161,11 @@ while ($currentLayer -le $Layers) {
                 }
 
                 if ($visited) {
+                    Write-Host "URL $currentUrl already visited. Skipping..."
                     continue
                 }
 
+                Write-Host "Marking URL $currentUrl as visited..."
                 Add-Content -Path "visited.txt" -Value $currentUrl
 
                 if (Is-TargetFileStrict -TargetUrl $currentUrl) {
@@ -195,7 +204,9 @@ while ($currentLayer -le $Layers) {
                         }
                     }
 
+                    Write-Host "Checking if file $currentUrl was already downloaded..."
                     if (-not $downloaded) {
+                        Write-Host "Fetching headers for $currentUrl..."
                         $lastModified = ""
                         try {
                             $response = Invoke-WebRequest -Uri $currentUrl -Method Head -UseBasicParsing -ErrorAction Stop
@@ -239,6 +250,7 @@ while ($currentLayer -le $Layers) {
                 if ($currentLayer -lt $Layers) {
                     Write-Host "[Layer $currentLayer] Crawling: $currentUrl"
 
+                    Write-Host "Fetching content for $currentUrl..."
                     $content = ""
                     try {
                         $response = Invoke-WebRequest -Uri $currentUrl -UseBasicParsing -ErrorAction Stop
@@ -247,6 +259,7 @@ while ($currentLayer -le $Layers) {
                         # Failed to fetch
                     }
 
+                    Write-Host "Extracting links from $currentUrl..."
                     if (-not [string]::IsNullOrEmpty($content)) {
                         $matches1 = [regex]::Matches($content, '(?i)href="([^"]*)"')
                         foreach ($m in $matches1) {
@@ -271,6 +284,7 @@ while ($currentLayer -le $Layers) {
 
     $nextQueueFile = "queue_$nextLayer.txt"
     if (Test-Path -Path $nextQueueFile) {
+        Write-Host "Deduplicating queue for next layer..."
         $content = Get-Content -Path $nextQueueFile
         if ($null -ne $content) {
             $uniqueUrls = $content | Sort-Object -Unique

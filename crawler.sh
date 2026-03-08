@@ -8,10 +8,13 @@ if [ -z "$URL" ]; then
     return 1 2>/dev/null || exit 1
 fi
 
+printf "Ensuring 'files' directory exists...\n"
 mkdir -p files
 
 CONFIG_FILE="files/.sync_config"
+printf "Checking for config file at %s...\n" "$CONFIG_FILE"
 if [ ! -f "$CONFIG_FILE" ]; then
+    printf "Config file not found. Creating %s...\n" "$CONFIG_FILE"
     > "$CONFIG_FILE"
 fi
 
@@ -34,10 +37,12 @@ update_config() {
     printf "%s\t%s\n" "$url" "$lm" >> "$CONFIG_FILE"
 }
 
+printf "Initializing tracking files (queue_0.txt, visited.txt, downloaded.txt)...\n"
 > queue_0.txt
 > visited.txt
 > downloaded.txt
 
+printf "Adding initial URL to queue_0.txt...\n"
 printf "%s\n" "$URL" > queue_0.txt
 
 get_absolute_url() {
@@ -108,10 +113,13 @@ while [ "$current_layer" -le "$LAYERS" ]; do
     while IFS= read -r current_url || [ -n "$current_url" ]; do
         [ -z "$current_url" ] && continue
 
+        printf "Checking if URL %s was already visited...\n" "$current_url"
         if grep -Fqx -- "$current_url" visited.txt 2>/dev/null; then
+            printf "URL %s already visited. Skipping...\n" "$current_url"
             continue
         fi
 
+        printf "Marking URL %s as visited...\n" "$current_url"
         printf "%s\n" "$current_url" >> visited.txt
 
         if is_target_file_strict "$current_url"; then
@@ -130,7 +138,9 @@ while [ "$current_layer" -le "$LAYERS" ]; do
 
             if [ -z "$filename" ]; then continue; fi
 
+            printf "Checking if file %s was already downloaded...\n" "$current_url"
             if ! grep -Fqx -- "$current_url" downloaded.txt 2>/dev/null; then
+                printf "Fetching headers for %s...\n" "$current_url"
                 headers=$(curl -sI "$current_url" 2>/dev/null || wget --server-response --spider "$current_url" 2>&1)
                 last_modified=$(printf "%s\n" "$headers" | grep -i "^Last-Modified:" | sed -e 's/^Last-Modified:[[:space:]]*//i' | tr -d '\r' | tail -n 1)
 
@@ -166,8 +176,10 @@ while [ "$current_layer" -le "$LAYERS" ]; do
         if [ "$current_layer" -lt "$LAYERS" ]; then
             printf "[Layer %d] Crawling: %s\n" "$current_layer" "$current_url"
 
+            printf "Fetching content for %s...\n" "$current_url"
             content=$(curl -sL "$current_url" 2>/dev/null || wget -qO- "$current_url" 2>/dev/null)
 
+            printf "Extracting links from %s...\n" "$current_url"
             links=$(printf "%s\n" "$content" | grep -ioE 'href="[^"]*"' | sed -E 's/^href="//i; s/"$//i')
             links2=$(printf "%s\n" "$content" | grep -ioE "href='[^']*'" | sed -E "s/^href='//i; s/'$//i")
 
@@ -191,6 +203,7 @@ while [ "$current_layer" -le "$LAYERS" ]; do
     done < "queue_${current_layer}.txt"
 
     if [ -f "queue_${next_layer}.txt" ]; then
+        printf "Deduplicating queue for next layer...\n"
         sort -u "queue_${next_layer}.txt" > "queue_${next_layer}_tmp.txt"
         mv "queue_${next_layer}_tmp.txt" "queue_${next_layer}.txt"
     fi
